@@ -15,9 +15,11 @@ class Program
 
         IDocument doc = await context.OpenAsync(r => r.Content(source));
 
-        var target = doc.QuerySelector("a[href*=\"/isi5.pdf\"]");
-        string href = target.GetAttribute("href")
+        var target = doc.QuerySelector("a[href*='/isi5.pdf']")
             ?? throw new InvalidOperationException("Schedule link not found on page.");
+
+        string href = target.GetAttribute("href")
+            ?? throw new InvalidOperationException("Schedule link has no href.");
 
         return new Uri(http.BaseAddress!, href[2..]);
     }
