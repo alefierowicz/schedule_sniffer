@@ -1,16 +1,15 @@
-﻿using System.Net;
-using System.Runtime.Serialization;
-using System.Xml.Schema;
-using AngleSharp;
-using AngleSharp.Attributes;
+﻿using AngleSharp;
 using AngleSharp.Dom;
 class Program
 {
 
-    public static async Task<Uri> GetLatestScheduleURL(HttpClient http, string url)
+    public static async Task<Uri> GetLatestScheduleURI(HttpClient http, string url)
     {
         IBrowsingContext context = BrowsingContext.New(Configuration.Default);
-        HttpResponseMessage response = await http.GetAsync(url);
+        using HttpResponseMessage response = await http.GetAsync(url);
+
+        response.EnsureSuccessStatusCode();
+
         var source = await response.Content.ReadAsStringAsync();
 
         IDocument doc = await context.OpenAsync(r => r.Content(source));
@@ -20,30 +19,43 @@ class Program
 
         string href = target.GetAttribute("href")
             ?? throw new InvalidOperationException("Schedule link has no href.");
-
-        return new Uri(http.BaseAddress!, href[2..]);
+        Uri uri = new(http.BaseAddress!, href);
+        // Console.WriteLine(uri);
+        return uri;
     }
-    public static async Task Main()
+    public static async Task<int> Main()
     {
-        HttpClient http = new HttpClient
+        HttpClient http = new()
         {
             BaseAddress = new Uri("https://degra.wi.pb.edu.pl/rozklady/"),
             Timeout = TimeSpan.FromSeconds(15)
         };
-
-        Uri pdf_uri = await GetLatestScheduleURL(http, "rozklad.php?page=st");
-
-        // next step - making a head request to see last edit.
-        var response = await http.SendAsync(new HttpRequestMessage(HttpMethod.Head, pdf_uri));
-        DateTimeOffset? latest_edit_offset = (int)response.StatusCode switch
+        try
         {
-            200 => response.Content.Headers.LastModified,
-            _ => null
-        };
 
-        if (latest_edit_offset is null)
-            throw new InvalidDataException("No headers received when making HEAD request to server.");
+            Uri pdf_uri = await GetLatestScheduleURI(http, "rozklad.php?page=st");
+            using var response = await http.SendAsync(new HttpRequestMessage(HttpMethod.Head, pdf_uri));
 
-        System.Console.WriteLine(latest_edit_offset);
+            response.EnsureSuccessStatusCode();
+            DateTimeOffset? latest_edit_offset;
+
+            if (response.Content.Headers.LastModified is not null)
+            {
+                latest_edit_offset = response.Content.Headers.LastModified;
+                Console.WriteLine(latest_edit_offset);
+            }
+            else
+            {
+                latest_edit_offset = null;
+                Console.WriteLine("Server did not respond with a LastModified header");
+            }
+            return 0;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
     }
 }
+// TODO: writing to sqlite.
